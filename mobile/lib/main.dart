@@ -34,6 +34,44 @@ class _TaskHomeState extends State<TaskHome> {
   bool _busy = false;
   String _message = 'Connect to your private TaskMaster backend.';
   List<dynamic> _tasks = [];
+  final Map<String, String> _pendingGrants = {};
+
+  Future<void> _taskAction(String taskId, String action) => _run(() async {
+        final endpoint = '/v1/tasks/$taskId/$action';
+        final response = await _client.post(
+          _endpoint(endpoint),
+          headers: _headers,
+          body: jsonEncode(action == 'prepare' || action == 'cancel'
+              ? <String, String>{}
+              : {'approval_id': _pendingGrants[taskId] ?? ''}),
+        );
+        if (response.statusCode != 200) {
+          return 'Action failed: HTTP ${response.statusCode}';
+        }
+        final decoded = jsonDecode(response.body);
+        if (action == 'prepare') _pendingGrants[taskId] = decoded['id'].toString();
+        if (action == 'run' || action == 'cancel') _pendingGrants.remove(taskId);
+        final refreshed = await _client.get(_endpoint('/v1/tasks'), headers: _headers);
+        if (refreshed.statusCode == 200 && mounted) {
+          setState(() => _tasks = jsonDecode(refreshed.body) as List<dynamic>);
+        }
+        return action == 'run' ? 'Result: ${decoded['output']}' : 'Action: $action successful';
+      });
+
+  Future<void> _confirmAndApprove(String taskId, String goal) async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Approve exact action?'),
+        content: Text('Task: $goal\\n\\nOnly the local echo demonstration will run. Approve this action once?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Deny')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Approve')),
+        ],
+      ),
+    );
+    if (accepted == true && mounted) await _taskAction(taskId, 'approve');
+  }
 
   @override
   void dispose() {
@@ -114,7 +152,7 @@ class _TaskHomeState extends State<TaskHome> {
             _goal.clear();
           });
         }
-        return 'Task created. Execution worker is not yet connected.';
+        return 'Task created. Prepare it to request approval for safe demo execution.';
       });
 
   @override
@@ -172,7 +210,21 @@ class _TaskHomeState extends State<TaskHome> {
               Card(
                 child: ListTile(
                   title: Text(task['goal']?.toString() ?? 'Untitled'),
-                  subtitle: Text(task['state']?.toString() ?? 'Unknown'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(task['state']?.toString() ?? 'Unknown'),
+                      if (task['state'] == 'CREATED' &&
+                          (task['goal']?.toString() ?? '').startsWith('echo: '))
+                        TextButton(onPressed: _busy ? null : () => _taskAction(task['id'].toString(), 'prepare'), child: const Text('Prepare demo')),
+                      if (task['state'] == 'WAITING_APPROVAL' && _pendingGrants.containsKey(task['id']))
+                        TextButton(onPressed: _busy ? null : () => _confirmAndApprove(task['id'].toString(), task['goal'].toString()), child: const Text('Review and approve')),
+                      if (task['state'] == 'PLANNED' && _pendingGrants.containsKey(task['id']))
+                        TextButton(onPressed: _busy ? null : () => _taskAction(task['id'].toString(), 'run'), child: const Text('Run approved demo')),
+                      if (['CREATED', 'PLANNED', 'WAITING_APPROVAL'].contains(task['state']))
+                        TextButton(onPressed: _busy ? null : () => _taskAction(task['id'].toString(), 'cancel'), child: const Text('Cancel')),
+                    ],
+                  ),
                 ),
               ),
           ],
