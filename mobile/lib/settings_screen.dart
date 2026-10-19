@@ -6,7 +6,7 @@ class TaskMasterSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Settings & integrations')),
-        body: const ListView(
+        body: ListView(
           children: [
             ListTile(
               leading: Icon(Icons.phone_android),
