@@ -1,4 +1,4 @@
-# TaskMaster 2.0 — Architecture Blueprint
+# Prods — Autonomous AI Platform Architecture Blueprint
 Status: proposed architecture; implementation not yet complete.
 Decision: fully automatic model selection with hybrid local/cloud execution. Preserve the existing Flutter chat UX and working Android APK pipeline.
 
@@ -43,4 +43,7 @@ Mobile-Agent-v3.5: https://arxiv.org/abs/2602.16855
 HybridFlow (ICML 2026): https://proceedings.mlr.press/v306/dong26g.html
 SE-GA (ICML 2026): https://proceedings.mlr.press/v306/jin26m.html
 VenusBench-Mobile (ICML 2026): https://proceedings.mlr.press/v306/gong26a.html
-Benchmarks and model claims must be reproduced on supported TaskMaster hardware before product claims.
+Benchmarks and model claims must be reproduced on supported Prods hardware before product claims.
+
+## Product identity decision (2026-10-19)
+Prods is the name of the entire autonomous AI platform, not just its brain. TaskMaster is the legacy project/repository identifier during migration. Preserve existing Android applicationId and signing identity until an explicit compatibility plan is validated; do not rename package IDs as a documentation-only change. Existing file paths and CI identifiers remain unchanged until implementation migration.
