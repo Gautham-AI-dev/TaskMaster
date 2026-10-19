@@ -1,4 +1,4 @@
-# TaskMaster 2.0 — Benchmark and Release Gates
+# Prods — Benchmark and Release Gates
 Status: specification; no measured performance claimed.
 
 ## Primary KPIs
@@ -30,3 +30,6 @@ Do not mark a release as passed until device reports and evidence are uploaded a
 ## Initial test case: movie showtimes
 Request: Check movie tickets in Visakhapatnam today.
 Expected: authorized source inspected; city/date preserved; available listings and prices only when verified; clear source/time; no purchase without explicit confirmation; BLOCKED or PARTIAL if data inaccessible; never claim tickets available from a mere app launch.
+
+## Product identity decision (2026-10-19)
+Prods is the name of the entire autonomous AI platform, not just its brain. TaskMaster is the legacy project/repository identifier during migration. Preserve existing Android applicationId and signing identity until an explicit compatibility plan is validated; do not rename package IDs as a documentation-only change. Existing file paths and CI identifiers remain unchanged until implementation migration.
