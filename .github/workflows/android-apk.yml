@@ -1,4 +1,4 @@
-name: Android debug APK
+name: Prods Android debug APK
 on:
   push:
     paths:
@@ -44,7 +44,7 @@ jobs:
           sha256sum mobile/build/app/outputs/flutter-apk/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: taskmaster-debug-apk
+          name: prods-debug-apk
           path: mobile/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14

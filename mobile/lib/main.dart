@@ -17,7 +17,7 @@ class TaskMasterApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'TaskMaster',
+        title: 'Prods',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
           useMaterial3: true,
@@ -157,7 +157,7 @@ class _ChatHomeState extends State<ChatHome> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: const Text('TaskMaster'),
+          title: const Text('Prods'),
           actions: [
             IconButton(
               tooltip: 'Settings & integrations',
