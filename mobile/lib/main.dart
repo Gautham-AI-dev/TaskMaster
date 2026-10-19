@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'task_engine.dart';
+import 'bookmyshow_launcher.dart';
+import 'movie_availability.dart';
 import 'task_repository.dart';
 
 void main() async {
@@ -36,6 +38,9 @@ class TaskHome extends StatefulWidget {
 
 class _TaskHomeState extends State<TaskHome> {
   final _goal = TextEditingController();
+  final _movie = TextEditingController();
+  final _city = TextEditingController();
+  final _bookMyShow = const BookMyShowLauncher();
   final _engine = const TaskEngine();
   List<LocalTask> _tasks = [];
   String _message = 'Offline mode: no PC, account, or internet required.';
@@ -55,6 +60,8 @@ class _TaskHomeState extends State<TaskHome> {
   @override
   void dispose() {
     _goal.dispose();
+    _movie.dispose();
+    _city.dispose();
     super.dispose();
   }
 
@@ -62,6 +69,23 @@ class _TaskHomeState extends State<TaskHome> {
     final repository = widget.repository;
     if (repository != null) await repository.save(next);
     if (mounted) setState(() => _tasks = next);
+  }
+
+  Future<void> _openBookMyShow() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final request = MovieAvailabilityRequest(movie: _movie.text, city: _city.text);
+      final opened = await _bookMyShow.open();
+      if (!mounted) return;
+      setState(() => _message = opened
+          ? 'Opened BookMyShow. Search for ${request.movie} in ${request.city} and inspect showtimes. Ticket availability is not yet automatically verified.'
+          : 'Could not open BookMyShow.');
+    } catch (error) {
+      if (mounted) setState(() => _message = 'Movie search failed: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _create() async {
@@ -135,6 +159,11 @@ class _TaskHomeState extends State<TaskHome> {
             ),
             const Text('Tasks are stored locally. No backend connection is required.'),
             const SizedBox(height: 16),
+            const Text('First automation: BookMyShow', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            TextField(controller: _movie, decoration: const InputDecoration(labelText: 'Movie name')),
+            TextField(controller: _city, decoration: const InputDecoration(labelText: 'City')),
+            FilledButton.tonal(onPressed: _busy ? null : _openBookMyShow, child: const Text('Open BookMyShow to check tickets')),
+            const Divider(height: 32),
             TextField(
               controller: _goal,
               minLines: 2,
