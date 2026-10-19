@@ -106,4 +106,4 @@ def create_app(db_path: str | None = None, api_token: str | None = None) -> Fast
     return app
 
 # Startup must fail closed if the token is missing.
-app = create_app()
+app = create_app() if os.environ.get("TASKMASTER_API_TOKEN") else None
