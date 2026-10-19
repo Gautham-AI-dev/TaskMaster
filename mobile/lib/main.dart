@@ -113,6 +113,7 @@ class _ChatHomeState extends State<ChatHome> {
         await _append('assistant', route.reply);
         return;
       }
+      if (!mounted) return;
       final approved = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
