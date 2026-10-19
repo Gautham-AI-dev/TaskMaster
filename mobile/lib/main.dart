@@ -44,7 +44,12 @@ class _TaskHomeState extends State<TaskHome> {
   @override
   void initState() {
     super.initState();
-    _tasks = widget.repository?.load() ?? [];
+    try {
+      _tasks = widget.repository?.load() ?? [];
+    } catch (_) {
+      _tasks = [];
+      _message = 'Stored tasks could not be read. Existing data was not deleted.';
+    }
   }
 
   @override
