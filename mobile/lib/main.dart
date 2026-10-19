@@ -1,21 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'task_engine.dart';
 import 'bookmyshow_launcher.dart';
-import 'movie_availability.dart';
-import 'task_repository.dart';
+import 'chat_router.dart';
+import 'settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final preferences = await SharedPreferences.getInstance();
-  runApp(TaskMasterApp(repository: TaskRepository(preferences)));
+  final prefs = await SharedPreferences.getInstance();
+  runApp(TaskMasterApp(preferences: prefs));
 }
 
 class TaskMasterApp extends StatelessWidget {
-  const TaskMasterApp({super.key, this.repository});
-
-  final TaskRepository? repository;
+  const TaskMasterApp({super.key, this.preferences});
+  final SharedPreferences? preferences;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -24,202 +22,221 @@ class TaskMasterApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
           useMaterial3: true,
         ),
-        home: TaskHome(repository: repository),
+        home: ChatHome(preferences: preferences),
       );
 }
 
-class TaskHome extends StatefulWidget {
-  const TaskHome({super.key, this.repository});
-  final TaskRepository? repository;
-
-  @override
-  State<TaskHome> createState() => _TaskHomeState();
+class ChatMessage {
+  const ChatMessage(this.role, this.text);
+  final String role;
+  final String text;
+  Map<String, String> toJson() => {'role': role, 'text': text};
+  factory ChatMessage.fromJson(Map<String, dynamic> data) =>
+      ChatMessage(data['role'] as String, data['text'] as String);
 }
 
-class _TaskHomeState extends State<TaskHome> {
-  final _goal = TextEditingController();
-  final _movie = TextEditingController();
-  final _city = TextEditingController();
-  final _bookMyShow = const BookMyShowLauncher();
-  final _engine = const TaskEngine();
-  List<LocalTask> _tasks = [];
-  String _message = 'Offline mode: no PC, account, or internet required.';
+class ChatHome extends StatefulWidget {
+  const ChatHome({super.key, this.preferences});
+  final SharedPreferences? preferences;
+
+  @override
+  State<ChatHome> createState() => _ChatHomeState();
+}
+
+class _ChatHomeState extends State<ChatHome> {
+  final _input = TextEditingController();
+  final _router = const ChatRouter();
+  final _launcher = const BookMyShowLauncher();
+  final _scroll = ScrollController();
+  final List<ChatMessage> _messages = [];
   bool _busy = false;
+  static const _historyKey = 'taskmaster.chat.v1';
 
   @override
   void initState() {
     super.initState();
-    try {
-      _tasks = widget.repository?.load() ?? [];
-    } catch (_) {
-      _tasks = [];
-      _message = 'Stored tasks could not be read. Existing data was not deleted.';
+    final stored = widget.preferences?.getStringList(_historyKey) ?? [];
+    for (final line in stored) {
+      final index = line.indexOf(':');
+      if (index < 0) continue;
+      final role = line.substring(0, index);
+      if (role == 'user' || role == 'assistant') {
+        _messages.add(ChatMessage(role, line.substring(index + 1)));
+      }
     }
   }
 
   @override
   void dispose() {
-    _goal.dispose();
-    _movie.dispose();
-    _city.dispose();
+    _input.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _persist(List<LocalTask> next) async {
-    final repository = widget.repository;
-    if (repository != null) await repository.save(next);
-    if (mounted) setState(() => _tasks = next);
+  Future<void> _append(String role, String message) async {
+    setState(() => _messages.add(ChatMessage(role, message)));
+    final prefs = widget.preferences;
+    if (prefs != null) {
+      try {
+        await prefs.setStringList(
+          _historyKey,
+          _messages.map((item) => '${item.role}:${item.text}').toList(),
+        );
+      } catch (_) {
+        if (mounted) {
+          setState(() => _messages.add(const ChatMessage(
+                'assistant', 'Warning: conversation could not be saved locally.',
+              )));
+        }
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
-  Future<void> _openBookMyShow() async {
-    if (_busy) return;
+  Future<void> _send() async {
+    final text = _input.text.trim();
+    if (text.isEmpty || _busy) return;
+    _input.clear();
     setState(() => _busy = true);
     try {
-      final request = MovieAvailabilityRequest(movie: _movie.text, city: _city.text);
-      final opened = await _bookMyShow.open();
-      if (!mounted) return;
-      setState(() => _message = opened
-          ? 'Opened BookMyShow. Search for ${request.movie} in ${request.city} and inspect showtimes. Ticket availability is not yet automatically verified.'
-          : 'Could not open BookMyShow.');
-    } catch (error) {
-      if (mounted) setState(() => _message = 'Movie search failed: $error');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _create() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final task = _engine.create(_goal.text);
-      await _persist([task, ..._tasks]);
-      _goal.clear();
-      if (mounted) setState(() => _message = 'Task saved on this device.');
-    } catch (error) {
-      if (mounted) setState(() => _message = 'Could not create task: $error');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _update(LocalTask task, LocalTask Function(LocalTask) action) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final next = action(task);
-      await _persist([
-        for (final existing in _tasks)
-          if (existing.id == task.id) next else existing,
-      ]);
-      if (mounted) setState(() => _message = 'Task status: ${next.state}');
-    } catch (error) {
-      if (mounted) setState(() => _message = 'Action failed: $error');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _review(LocalTask task) async {
-    final approved = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Approve local action?'),
-        content: Text(
-          'Task: ${task.goal}\n\n'
-          'Action: display the text after "echo:". '
-          'No network requests or other app actions will occur.',
+      await _append('user', text);
+      final route = _router.route(text);
+      if (route.intent != ChatIntent.bookMyShow) {
+        await _append('assistant', route.reply);
+        return;
+      }
+      final approved = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Open BookMyShow?'),
+          content: const Text(
+            'TaskMaster will open BookMyShow externally. '
+            'It cannot yet inspect showtimes or verify availability.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Open app'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Deny'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Approve and run'),
-          ),
-        ],
-      ),
-    );
-    if (approved == true && mounted) {
-      await _update(task, _engine.executeApproved);
+      );
+      if (!mounted) return;
+      if (approved != true) {
+        await _append('assistant', 'Cancelled. I did not open BookMyShow.');
+        return;
+      }
+      final launched = await _launcher.open();
+      await _append(
+        'assistant',
+        launched
+            ? 'Opened BookMyShow (or its website). Search for your movie and city there. '
+              'I cannot yet confirm ticket availability.'
+            : 'I could not open BookMyShow on this device.',
+      );
+    } catch (error) {
+      await _append('assistant', 'The request failed: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('TaskMaster')),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const Text(
-              'Standalone Android MVP',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const Text('Tasks are stored locally. No backend connection is required.'),
-            const SizedBox(height: 16),
-            const Text('First automation: BookMyShow', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            TextField(controller: _movie, decoration: const InputDecoration(labelText: 'Movie name')),
-            TextField(controller: _city, decoration: const InputDecoration(labelText: 'City')),
-            FilledButton.tonal(onPressed: _busy ? null : _openBookMyShow, child: const Text('Open BookMyShow to check tickets')),
-            const Divider(height: 32),
-            TextField(
-              controller: _goal,
-              minLines: 2,
-              maxLines: 4,
-              maxLength: 5000,
-              decoration: const InputDecoration(
-                labelText: 'New task goal',
-                hintText: 'echo: Hello TaskMaster',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            FilledButton(
-              onPressed: _busy ? null : _create,
-              child: const Text('Create task'),
-            ),
-            const SizedBox(height: 12),
-            Text(_message, key: const Key('status')),
-            const Divider(height: 32),
-            const Text(
-              'My tasks',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            for (final task in _tasks)
-              Card(
-                key: ValueKey(task.id),
-                child: ListTile(
-                  title: Text(task.goal),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(task.state),
-                      if (task.result != null) Text('Result: ${task.result}'),
-                      if (task.state == 'CREATED' && task.goal.startsWith('echo: '))
-                        TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => _update(task, _engine.prepare),
-                          child: const Text('Prepare'),
-                        ),
-                      if (task.state == 'WAITING_APPROVAL')
-                        TextButton(
-                          onPressed: _busy ? null : () => _review(task),
-                          child: const Text('Review and approve'),
-                        ),
-                      if (task.state == 'CREATED' || task.state == 'WAITING_APPROVAL')
-                        TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => _update(task, _engine.cancel),
-                          child: const Text('Cancel'),
-                        ),
-                    ],
-                  ),
+        appBar: AppBar(
+          title: const Text('TaskMaster'),
+          actions: [
+            IconButton(
+              tooltip: 'Settings & integrations',
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const TaskMasterSettings(),
                 ),
               ),
+            ),
           ],
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: _messages.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'What can I help you with?\n\n'
+                            'Try: Check movie tickets on BookMyShow',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _scroll,
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final item = _messages[index];
+                          return Align(
+                            alignment: item.role == 'user'
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            child: Card(
+                              color: item.role == 'user'
+                                  ? Theme.of(context).colorScheme.primaryContainer
+                                  : null,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(item.text),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _input,
+                        key: const Key('chat-input'),
+                        minLines: 1,
+                        maxLines: 4,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
+                        decoration: const InputDecoration(
+                          hintText: 'Ask TaskMaster anything...',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      tooltip: 'Send',
+                      onPressed: _busy ? null : _send,
+                      icon: const Icon(Icons.arrow_upward),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       );
 }
