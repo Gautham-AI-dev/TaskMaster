@@ -1,0 +1,38 @@
+name: Android debug APK
+on:
+  push:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Create Android platform scaffold
+        working-directory: mobile
+        run: flutter create --platforms=android --project-name taskmaster --org dev.taskmaster .
+      - name: Install packages
+        working-directory: mobile
+        run: flutter pub get
+      - name: Analyze Flutter
+        working-directory: mobile
+        run: flutter analyze
+      - name: Test Flutter
+        working-directory: mobile
+        run: flutter test
+      - name: Build debug APK
+        working-directory: mobile
+        run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taskmaster-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
