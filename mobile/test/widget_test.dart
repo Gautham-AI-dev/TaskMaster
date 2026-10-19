@@ -3,11 +3,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taskmaster/main.dart';
 
 void main() {
-  testWidgets('TaskMaster shows backend connection and task creation', (tester) async {
+  testWidgets('Standalone TaskMaster creates and prepares offline tasks', (tester) async {
     await tester.pumpWidget(const TaskMasterApp());
-    expect(find.text('TaskMaster'), findsOneWidget);
-    expect(find.text('Connect / Refresh tasks'), findsOneWidget);
+    expect(find.text('Standalone Android MVP'), findsOneWidget);
     expect(find.text('Create task'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(3));
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'echo: Hello');
+    await tester.tap(find.text('Create task'));
+    await tester.pumpAndSettle();
+    expect(find.text('echo: Hello'), findsOneWidget);
+    expect(find.text('Prepare'), findsOneWidget);
+    await tester.tap(find.text('Prepare'));
+    await tester.pumpAndSettle();
+    expect(find.text('Review and approve'), findsOneWidget);
   });
 }
