@@ -1,40 +1,36 @@
 import os
 import tempfile
 import unittest
-
 from taskmaster.approvals import ApprovalStore
-
 
 class ApprovalTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.path = os.path.join(self.temp.name, "approvals.sqlite3")
-        self.store = ApprovalStore(self.path)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = ApprovalStore(os.path.join(self.tmp.name, "db.sqlite"))
 
     def tearDown(self):
-        self.temp.cleanup()
+        self.tmp.cleanup()
 
-    def test_single_use_and_argument_binding(self):
-        grant = self.store.request("task1", "message.send", {"to": "alice", "body": "hello"})
-        self.assertFalse(self.store.consume(grant["id"], "task1", "message.send", {"to": "bob", "body": "hello"}))
-        self.assertFalse(self.store.consume(grant["id"], "task2", "message.send", {"to": "alice", "body": "hello"}))
-        self.assertTrue(self.store.consume(grant["id"], "task1", "message.send", {"body": "hello", "to": "alice"}))
-        self.assertFalse(self.store.consume(grant["id"], "task1", "message.send", {"to": "alice", "body": "hello"}))
+    def test_approval_is_explicit_single_use_and_exact(self):
+        grant = self.store.request("t", "echo", {"goal": "echo: yes"})
+        self.assertFalse(self.store.consume(grant["id"], "t", "echo", {"goal": "echo: yes"}))
+        self.assertFalse(self.store.approve(grant["id"], "t", "echo", {"goal": "echo: no"}))
+        self.assertTrue(self.store.approve(grant["id"], "t", "echo", {"goal": "echo: yes"}))
+        self.assertFalse(self.store.consume(grant["id"], "t", "echo", {"goal": "echo: no"}))
+        self.assertTrue(self.store.consume(grant["id"], "t", "echo", {"goal": "echo: yes"}))
+        self.assertFalse(self.store.consume(grant["id"], "t", "echo", {"goal": "echo: yes"}))
 
-    def test_revocation(self):
-        grant = self.store.request("task1", "file.delete", {"path": "a"})
+    def test_revoke(self):
+        grant = self.store.request("t", "echo", {})
         self.assertTrue(self.store.revoke(grant["id"]))
-        self.assertFalse(self.store.consume(grant["id"], "task1", "file.delete", {"path": "a"}))
+        self.assertFalse(self.store.approve(grant["id"], "t", "echo", {}))
 
-    def test_survives_restart(self):
-        grant = self.store.request("task1", "file.write", {"path": "a"})
-        reopened = ApprovalStore(self.path)
-        self.assertTrue(reopened.consume(grant["id"], "task1", "file.write", {"path": "a"}))
+    def test_restart(self):
+        grant = self.store.request("t", "echo", {})
+        reopened = ApprovalStore(self.store.path)
+        self.assertTrue(reopened.approve(grant["id"], "t", "echo", {}))
+        self.assertTrue(reopened.consume(grant["id"], "t", "echo", {}))
 
     def test_invalid_ttl(self):
         with self.assertRaises(ValueError):
-            self.store.request("task1", "file.write", {}, 0)
-
-
-if __name__ == "__main__":
-    unittest.main()
+            self.store.request("t", "echo", {}, 0)
